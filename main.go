@@ -18,6 +18,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
+	"nofx/telegram"
 )
 
 func main() {
@@ -111,6 +112,22 @@ func main() {
 		logger.Fatalf("❌ Failed to load traders: %v", err)
 	}
 
+	// telegram启动
+	if cfg.TelegramEnabled {
+		// 创建一个用于接收重载信号的通道，这里先保持空
+		reloadChan := make(chan struct{})
+		go func() {
+			// telegram.Start 可能没有返回值，直接调用即可
+			telegram.Start(cfg, st, reloadChan)
+			// 如果它真的返回 error，需要用不同的方式处理
+		}()
+		logger.Info("✅ Telegram bot started successfully (if configured)")
+    }
+
+    // 启动 API 服务器
+    server := api.NewServer(traderManager, st, cryptoService, cfg.APIServerPort)
+    // ... 后续代码保持不变 ...
+
 	// Display loaded trader information
 	traders, err := st.Trader().List("default")
 	if err != nil {
@@ -136,7 +153,7 @@ func main() {
 	}
 
 	// Start API server
-	server := api.NewServer(traderManager, st, cryptoService, cfg.APIServerPort)
+	server = api.NewServer(traderManager, st, cryptoService, cfg.APIServerPort)
 
 	go func() {
 		if err := server.Start(); err != nil {

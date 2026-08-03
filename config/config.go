@@ -53,7 +53,28 @@ type Config struct {
 	AlpacaSecretKey string // Alpaca secret key
 	TwelveDataKey   string // TwelveData API key for forex & metals
 
+	TelegramEnabled bool   // 是否启用 Telegram 机器人
+    BotToken        string // Telegram Bot Token（可选，从数据库读取为主）
+
 }
+
+
+//----------------telegram配置--------------------
+func getEnv(key, defaultVal string) string {
+    if v := os.Getenv(key); v != "" {
+        return v
+    }
+    return defaultVal
+}
+
+func getEnvAsBool(key string, defaultVal bool) bool {
+    if v := os.Getenv(key); v != "" {
+        return strings.ToLower(v) == "true"
+    }
+    return defaultVal
+}
+//--------------------------------------------------
+
 
 // MustInit initializes global configuration or panics. Use from main() so the
 // process refuses to start under an insecure config (e.g. default JWT secret).
@@ -85,6 +106,10 @@ func initConfig() error {
 		DBName:    "nofx",
 		DBSSLMode: "disable",
 	}
+	cfg.TelegramEnabled = getEnvAsBool("TELEGRAM_ENABLED", false)
+    cfg.BotToken = getEnv("TELEGRAM_BOT_TOKEN", "")
+
+    global = cfg
 
 	// Load from environment variables
 	if v := os.Getenv("JWT_SECRET"); v != "" {
