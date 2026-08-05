@@ -1,23 +1,24 @@
+# NOFX Production Deployment
+# 用户部署专用 - 使用官方预构建镜像
+#
+# 一键部署命令:
+# curl -fsSL https://raw.githubusercontent.com/NoFxAiOS/nofx/main/install.sh | bash
+#
+# 或手动部署:
+# curl -O https://raw.githubusercontent.com/NoFxAiOS/nofx/main/docker-compose.prod.yml
+# docker compose -f docker-compose.prod.yml up -d
+
 services:
-  # Backend service (API and core logic)
   nofx:
-    build:
-      context: .
-      dockerfile: ./docker/Dockerfile.backend
+    build: .
+    # image: ghcr.io/nofxaios/nofx/nofx-backend:latest
     container_name: nofx-trading
     restart: unless-stopped
-    stop_grace_period: 30s  # Allow the app 30 seconds for graceful shutdown
+    stop_grace_period: 30s
     ports:
       - "${NOFX_BACKEND_PORT:-8080}:8080"
-      # pprof profiling is bound to host loopback only; uncomment for local debug.
-      # - "127.0.0.1:6060:6060"
     volumes:
-      # NOTE: .env is bind-mounted so the beginner-onboarding flow
-      # (persistBeginnerWalletEnv) can write CLAW402_WALLET_* back to the host
-      # file. Without this mount the wallet is regenerated on every container
-      # restart. For threat models where the .env file should not be reachable
-      # via container RCE, deploy via env vars only and remove this mount.
-      - ./.env:/app/.env
+      # Data directory for database and logs
       - ./data:/app/data
       - /etc/localtime:/etc/localtime:ro
     env_file:
@@ -34,11 +35,9 @@ services:
       retries: 3
       start_period: 60s
 
-  # Frontend service (static serving and proxy)
   nofx-frontend:
-    build:
-      context: .
-      dockerfile: ./docker/Dockerfile.frontend
+    # image: ghcr.io/nofxaios/nofx/nofx-frontend:latest
+    build: .
     container_name: nofx-frontend
     restart: unless-stopped
     ports:

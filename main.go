@@ -19,9 +19,21 @@ import (
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	"nofx/telegram"
+	"log"
 )
 
+
 func main() {
+	// 崩溃报错日志
+	defer func() {
+        if r := recover(); r != nil {
+            log.Printf("Recovered from panic: %v", r)
+        }
+   	 }()
+
+
+
+
 	// Local admin subcommands (account recovery) run directly against the
 	// database and never start the HTTP server. Recovery therefore requires
 	// shell/file access to the host instead of a network request, which keeps

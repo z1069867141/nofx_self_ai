@@ -18,8 +18,8 @@ const (
 	// 3-fold robustness): gates beat no-gates by 34 pts and the old rigid
 	// 4h/8h by 16 pts of worst-fold score; the searched optimum sits at these
 	// values. Thresholds are PRICE-move percentages (leverage-independent).
-	autopilotMinHoldDuration        = 90 * time.Minute
-	autopilotNoiseCloseHoldDuration = 3 * time.Hour
+	autopilotMinHoldDuration        = 15 * time.Minute
+	autopilotNoiseCloseHoldDuration = 15 * time.Minute
 	// Re-entering a just-closed symbol was a consistent loss source: the
 	// replay's top-20 configs cluster tightly at ~4h.
 	autopilotReentryCooldown        = 4 * time.Hour

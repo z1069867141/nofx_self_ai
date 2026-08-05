@@ -824,20 +824,20 @@ func ParseSSEStream(body io.Reader, onChunk func(string), onLine func()) (string
 		if onLine != nil {
 			onLine()
 		}
-
 		line := scanner.Text()
 		if !strings.HasPrefix(line, "data: ") {
 			continue
 		}
-		data := strings.TrimPrefix(line, "data: ")
-		if data == "[DONE]" {
-			break
+		data := strings.TrimSpace(strings.TrimPrefix(line, "data: "))
+		if data == "" || data == "[DONE]" {
+			continue // 跳过空数据或结束标记
 		}
 
 		var chunk struct {
 			Choices []struct {
 				Delta struct {
-					Content string `json:"content"`
+					Content          string `json:"content"`
+					ReasoningContent string `json:"reasoning_content"` // DeepSeek 特有字段
 				} `json:"delta"`
 				FinishReason *string `json:"finish_reason"`
 			} `json:"choices"`
@@ -848,7 +848,8 @@ func ParseSSEStream(body io.Reader, onChunk func(string), onLine func()) (string
 			} `json:"usage,omitempty"`
 		}
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-			continue // skip malformed chunks
+			// 非标准事件（如 type: thinking），跳过
+			continue
 		}
 
 		if chunk.Usage != nil && chunk.Usage.TotalTokens > 0 {
@@ -858,30 +859,30 @@ func ParseSSEStream(body io.Reader, onChunk func(string), onLine func()) (string
 				TotalTokens:      chunk.Usage.TotalTokens,
 			}
 		}
-
 		if len(chunk.Choices) == 0 {
 			continue
 		}
 
-		delta := chunk.Choices[0].Delta.Content
-		if delta == "" {
-			continue
+		delta := chunk.Choices[0].Delta
+		// 提取 content
+		if delta.Content != "" {
+			accumulated.WriteString(delta.Content)
+			if onChunk != nil {
+				onChunk(accumulated.String())
+			}
 		}
-
-		accumulated.WriteString(delta)
-		if onChunk != nil {
-			onChunk(accumulated.String())
+		// 提取 reasoning_content（若需保留，可存储到 context 中）
+		if delta.ReasoningContent != "" {
+			// 可根据需要存储 reasoning_content，用于多轮对话回传
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
 		return accumulated.String(), usage, fmt.Errorf("stream interrupted: %w", err)
 	}
-
 	return accumulated.String(), usage, nil
 }
 
-// ReportStreamUsage fires TokenUsageCallback with the given usage, provider, and model.
 // No-op if usage is nil or callback is unset.
 func ReportStreamUsage(usage *TokenUsage, provider, model string) {
 	if usage == nil || TokenUsageCallback == nil || usage.TotalTokens <= 0 {
