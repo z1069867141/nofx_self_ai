@@ -815,8 +815,14 @@ func (client *Client) CallWithRequestStream(req *Request, onChunk func(string)) 
 // If onLine is non-nil, it is called after each raw SSE line is scanned
 // (useful for resetting idle-timeout watchdogs).
 // Returns the complete accumulated text and any parsed token usage (nil if absent).
+// ParseSSEStream reads an SSE response body, accumulates text deltas,
+// and calls onChunk with the full accumulated text after each chunk.
+// If onLine is non-nil, it is called after each raw SSE line is scanned
+// (useful for resetting idle-timeout watchdogs).
+// Returns the complete accumulated text and any parsed token usage (nil if absent).
 func ParseSSEStream(body io.Reader, onChunk func(string), onLine func()) (string, *TokenUsage, error) {
-	var accumulated strings.Builder
+	var accumulated strings.Builder          // 存储 content
+	var reasoningAccumulated strings.Builder // 存储 reasoning_content
 	var usage *TokenUsage
 	scanner := bufio.NewScanner(body)
 
@@ -830,14 +836,14 @@ func ParseSSEStream(body io.Reader, onChunk func(string), onLine func()) (string
 		}
 		data := strings.TrimSpace(strings.TrimPrefix(line, "data: "))
 		if data == "" || data == "[DONE]" {
-			continue // 跳过空数据或结束标记
+			continue
 		}
 
 		var chunk struct {
 			Choices []struct {
 				Delta struct {
 					Content          string `json:"content"`
-					ReasoningContent string `json:"reasoning_content"` // DeepSeek 特有字段
+					ReasoningContent string `json:"reasoning_content"`
 				} `json:"delta"`
 				FinishReason *string `json:"finish_reason"`
 			} `json:"choices"`
@@ -848,7 +854,7 @@ func ParseSSEStream(body io.Reader, onChunk func(string), onLine func()) (string
 			} `json:"usage,omitempty"`
 		}
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-			// 非标准事件（如 type: thinking），跳过
+			// 非标准事件（如 type: thinking）直接跳过
 			continue
 		}
 
@@ -859,28 +865,36 @@ func ParseSSEStream(body io.Reader, onChunk func(string), onLine func()) (string
 				TotalTokens:      chunk.Usage.TotalTokens,
 			}
 		}
+
 		if len(chunk.Choices) == 0 {
 			continue
 		}
 
 		delta := chunk.Choices[0].Delta
-		// 提取 content
 		if delta.Content != "" {
 			accumulated.WriteString(delta.Content)
 			if onChunk != nil {
 				onChunk(accumulated.String())
 			}
 		}
-		// 提取 reasoning_content（若需保留，可存储到 context 中）
+		// 累积 reasoning_content（即使 content 为空，也保留）
 		if delta.ReasoningContent != "" {
-			// 可根据需要存储 reasoning_content，用于多轮对话回传
+			reasoningAccumulated.WriteString(delta.ReasoningContent)
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
 		return accumulated.String(), usage, fmt.Errorf("stream interrupted: %w", err)
 	}
-	return accumulated.String(), usage, nil
+
+	// 🧠 关键修复：如果 content 为空但 reasoning_content 有内容，
+	// 则将 reasoning_content 作为备选内容返回（因为它可能包含决策 JSON）
+	finalText := accumulated.String()
+	if finalText == "" && reasoningAccumulated.Len() > 0 {
+		finalText = reasoningAccumulated.String()
+	}
+
+	return finalText, usage, nil
 }
 
 // No-op if usage is nil or callback is unset.
