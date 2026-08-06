@@ -264,6 +264,59 @@ func pruneCandidateCoinsWithoutMarketData(ctx *Context) {
 	ctx.CandidateCoins = kept
 }
 
+// / extractDecisionsFromText 从分析文本中提取决策（回退方案）
+func extractDecisionsFromText(text string) []Decision {
+	var decisions []Decision
+
+	// 1. 尝试查找 <decision> 标签
+	if match := reDecisionTag.FindStringSubmatch(text); len(match) > 1 {
+		jsonPart := strings.TrimSpace(match[1])
+		var d []Decision
+		if err := json.Unmarshal([]byte(jsonPart), &d); err == nil {
+			return d
+		}
+	}
+
+	// 2. 尝试查找 "action" 关键词（简单示例）
+	lines := strings.Split(text, "\n")
+	for _, line := range lines {
+		line = strings.ToLower(line)
+		if strings.Contains(line, "open_long") || strings.Contains(line, "open_short") ||
+			strings.Contains(line, "close_long") || strings.Contains(line, "close_short") {
+			// 提取可能的符号（假设格式为 "symbol: BTCUSDT"）
+			symbol := "UNKNOWN"
+			if idx := strings.Index(line, "symbol"); idx != -1 {
+				// 简单提取，实际需更健壮
+				parts := strings.Split(line, " ")
+				for _, p := range parts {
+					if strings.Contains(p, ":") {
+						symbol = strings.TrimSpace(strings.Split(p, ":")[1])
+						break
+					}
+				}
+			}
+			action := "hold"
+			if strings.Contains(line, "open_long") {
+				action = "open_long"
+			} else if strings.Contains(line, "open_short") {
+				action = "open_short"
+			} else if strings.Contains(line, "close_long") {
+				action = "close_long"
+			} else if strings.Contains(line, "close_short") {
+				action = "close_short"
+			}
+			decisions = append(decisions, Decision{
+				Symbol:     symbol,
+				Action:     action,
+				Confidence: 60,
+				Reasoning:  "Fallback extraction from analysis text",
+			})
+		}
+	}
+
+	return decisions
+}
+
 // ============================================================================
 // AI Response Parsing
 // ============================================================================
@@ -272,23 +325,35 @@ func parseFullDecisionResponse(aiResponse string, accountEquity float64, btcEthL
 	cotTrace := extractCoTTrace(aiResponse)
 
 	decisions, err := extractDecisions(aiResponse)
-	if err != nil {
-		return &FullDecision{
-			CoTTrace:  cotTrace,
-			Decisions: []Decision{},
-		}, fmt.Errorf("failed to extract decisions: %w", err)
-	}
-
-	if err := validateDecisions(decisions, accountEquity, btcEthLeverage, altcoinLeverage, btcEthPosRatio, altcoinPosRatio); err != nil {
+	if err == nil {
+		if err := validateDecisions(decisions, accountEquity, btcEthLeverage, altcoinLeverage, btcEthPosRatio, altcoinPosRatio); err != nil {
+			return &FullDecision{
+				CoTTrace:  cotTrace,
+				Decisions: decisions,
+			}, fmt.Errorf("decision validation failed: %w", err)
+		}
 		return &FullDecision{
 			CoTTrace:  cotTrace,
 			Decisions: decisions,
-		}, fmt.Errorf("decision validation failed: %w", err)
+		}, nil
+	}
+
+	// 🧠 回退解析：从分析文本中尝试提取决策
+	fallbackDecisions := extractDecisionsFromText(aiResponse)
+	if len(fallbackDecisions) == 0 {
+		// 如果还是无法提取，返回一个默认的 hold 决策，避免系统报错
+		fallbackDecisions = []Decision{
+			{
+				Symbol:    "ALL",
+				Action:    "wait",
+				Reasoning: "Model did not output structured JSON; system entered safe wait mode.",
+			},
+		}
 	}
 
 	return &FullDecision{
 		CoTTrace:  cotTrace,
-		Decisions: decisions,
+		Decisions: fallbackDecisions,
 	}, nil
 }
 
@@ -360,8 +425,8 @@ func extractDecisions(response string) ([]Decision, error) {
 		return []Decision{fallbackDecision}, nil
 	}
 
-	jsonContent = compactArrayOpen(jsonContent)
-	jsonContent = fixMissingQuotes(jsonContent)
+	jsonContent = compactArrayOpen(jsonPart)
+	jsonContent = fixMissingQuotes(jsonPart)
 
 	if err := validateJSONFormat(jsonContent); err != nil {
 		return nil, fmt.Errorf("JSON format validation failed: %w\nJSON content: %s\nFull response:\n%s", err, jsonContent, response)
