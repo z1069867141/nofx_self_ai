@@ -26,17 +26,28 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	zh := false
 	singleSymbol, primarySymbol := e.singleSymbolInfo()
 
+	// 检查是否有自定义 prompt_sections
+	hasCustomPromptSections := strings.TrimSpace(promptSections.RoleDefinition) != "" ||
+		strings.TrimSpace(promptSections.TradingFrequency) != "" ||
+		strings.TrimSpace(promptSections.EntryStandards) != "" ||
+		strings.TrimSpace(promptSections.DecisionProcess) != ""
+
+	// 如果是 Vergex 数据源且没有自定义 prompt_sections，则使用内置 Claw402 提示词
+	if e.usesVergexSignalPrompt() && !hasCustomPromptSections {
+		return e.buildVergexSystemPrompt(accountEquity, variant, lang, zh, singleSymbol, primarySymbol)
+	}
+
 	// Configs created in the Chinese-UI era carry legacy stored prompt sections
 	// and custom prompts written for a different contract; ignore them wholesale
 	// and fall back to the canonical built-in English sections.
-	legacyZhConfig := strings.EqualFold(strings.TrimSpace(e.config.Language), "zh")
-	if legacyZhConfig {
-		promptSections = store.PromptSectionsConfig{}
-	}
+	// legacyZhConfig := strings.EqualFold(strings.TrimSpace(e.config.Language), "zh")
+	// if legacyZhConfig {
+	// 	promptSections = store.PromptSectionsConfig{}
+	// }
 
-	if e.usesVergexSignalPrompt() {
-		return e.buildVergexSystemPrompt(accountEquity, variant, lang, zh, singleSymbol, primarySymbol)
-	}
+	// if e.usesVergexSignalPrompt() {
+	// 	return e.buildVergexSystemPrompt(accountEquity, variant, lang, zh, singleSymbol, primarySymbol)
+	// }
 
 	// 0. Data Dictionary & Schema (ensure AI understands all fields)
 	sb.WriteString(GetSchemaPrompt(lang))
@@ -45,7 +56,7 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 
 	// 1. Role definition (editable; falls back to a generic intro in the
 	//    correct language so we don't mix EN headings with ZH custom text).
-	roleDefinition := englishOnlyPromptSection(promptSections.RoleDefinition)
+	roleDefinition := promptSections.RoleDefinition
 	if roleDefinition != "" {
 		sb.WriteString(roleDefinition)
 		sb.WriteString("\n\n")
@@ -78,7 +89,7 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	writeHardConstraints(&sb, accountEquity, riskControl, btcEthPosValueRatio, altcoinPosValueRatio, singleSymbol, primarySymbol, zh)
 
 	// 4. Trading frequency (editable)
-	tradingFrequency := englishOnlyPromptSection(promptSections.TradingFrequency)
+	tradingFrequency := promptSections.TradingFrequency
 	if tradingFrequency != "" {
 		sb.WriteString(tradingFrequency)
 		sb.WriteString("\n\n")
@@ -97,7 +108,7 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	}
 
 	// 5. Entry standards (editable)
-	entryStandards := englishOnlyPromptSection(promptSections.EntryStandards)
+	entryStandards := promptSections.EntryStandards
 	if entryStandards != "" {
 		sb.WriteString(entryStandards)
 		if zh {
@@ -124,7 +135,7 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	}
 
 	// 6. Decision process (editable)
-	decisionProcess := englishOnlyPromptSection(promptSections.DecisionProcess)
+	decisionProcess := promptSections.DecisionProcess
 	if decisionProcess != "" {
 		sb.WriteString(decisionProcess)
 		sb.WriteString("\n\n")
@@ -155,9 +166,9 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	//   2. It guarantees a stock-specific, US-equity-tuned briefing
 	//      regardless of when the strategy was first created.
 	customPrompt := englishOnlyPromptSection(e.config.CustomPrompt)
-	if legacyZhConfig {
-		customPrompt = ""
-	}
+	// if legacyZhConfig {
+	// 	customPrompt = ""
+	// }
 	if singleSymbol && market.IsXyzDexAsset(primarySymbol) {
 		customPrompt = buildXYZStockCustomPrompt(primarySymbol)
 	}
