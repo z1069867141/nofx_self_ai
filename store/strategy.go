@@ -216,16 +216,16 @@ func (c *StrategyConfig) NormalizeProductSchema() {
 		c.CoinSource.UseOILow = false
 		c.CoinSource.UseHyperAll = false
 		c.CoinSource.UseHyperMain = false
-		minLimit := 10
-		if len(c.CoinSource.StaticCoins) > 0 {
-			minLimit = len(c.CoinSource.StaticCoins)
-			if minLimit > MaxCandidateCoins {
-				minLimit = MaxCandidateCoins
-			}
-		}
-		if c.CoinSource.VergexLimit < minLimit {
-			c.CoinSource.VergexLimit = minLimit
-		}
+		// minLimit := 10
+		// if len(c.CoinSource.StaticCoins) > 0 {
+		// 	minLimit = len(c.CoinSource.StaticCoins)
+		// 	if minLimit > MaxCandidateCoins {
+		// 		minLimit = MaxCandidateCoins
+		// 	}
+		// }
+		// if c.CoinSource.VergexLimit < minLimit {
+		// 	c.CoinSource.VergexLimit = minLimit
+		// }
 		if c.CoinSource.VergexMarketType == "" {
 			c.CoinSource.VergexMarketType = "all"
 		}
